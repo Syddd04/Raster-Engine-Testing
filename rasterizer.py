@@ -19,9 +19,15 @@ def project(project, vert):
 def edge(a, b, x, y):
     return (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x)
 
+def validEdge (v0, v1):
+    edge_vec = [v1.x - v0.x, v1.y - v0.y]
+    top = edge_vec[1] == 0 and edge_vec[0] < 0  
+    left = edge_vec[1] < 0                      
+    return top or left
+
 #Set up machines
 
-msaa : int = 0
+msaa : int = 2
 w = 640
 h = 480
 projector = Projector(w, h, 1, 10) #width, height, near plane, far plane
@@ -81,33 +87,38 @@ for i in range(0,2):
             edge2 = edge(ss_tri.B, ss_tri.C, bx, by) / (2 * area)
             edge3 = edge(ss_tri.C, ss_tri.A, bx, by) / (2 * area)
 
-            '''
-            print(edge1)
-            print(edge2)
-            print(edge3)
-            '''
+            check1 = 0 if validEdge(ss_tri.A, ss_tri.B) else -1e-9
+            check2 = 0 if validEdge(ss_tri.B, ss_tri.C) else -1e-9
+            check3 = 0 if validEdge(ss_tri.C, ss_tri.A) else -1e-9
 
-            if (msaa == 2):
-                x0 = j + 0.25
-                x1 = j + 0.75
+            if ((edge1 + check1 >= 0) and (edge2 + check2) >= 0 and (edge3 + check3) >= 0):
 
-                y0 = y + 0.25
-                y1 = y + 0.75
+                if (msaa == 2):
+                    x0 = j + 0.25
+                    x1 = j + 0.75
 
-                e0_1 = edge(ss_tri.A, ss_tri.B, x0, y0)
-                e0_2 = edge(ss_tri.B, ss_tri.C, x0, y0)
-                e0_3 = edge(ss_tri.C, ss_tri.A, x0, y0)
+                    y0 = y + 0.75
+                    y1 = y + 0.25
 
-                e1_1 = edge(ss_tri.A, ss_tri.B, x1, y1)
-                e1_2 = edge(ss_tri.B, ss_tri.C, x1, y1)
-                e1_3 = edge(ss_tri.C, ss_tri.A, x1, y1)
+                    e0_1 = edge(ss_tri.A, ss_tri.B, x0, y0) / (2 * area)
+                    e0_2 = edge(ss_tri.B, ss_tri.C, x0, y0) / (2 * area)
+                    e0_3 = edge(ss_tri.C, ss_tri.A, x0, y0) / (2 * area)
 
-                if (e0_1 >= 0 and e0_2 >= 0 and e0_3 >= 0):
-                    coverage[y][j + 0] = 1
-                if (e1_1 >= 0 and e1_2 >= 0 and e1_3 >= 0):
-                    coverage[y][j + 1] = 1
+                    e1_1 = edge(ss_tri.A, ss_tri.B, x1, y1) / (2 * area)
+                    e1_2 = edge(ss_tri.B, ss_tri.C, x1, y1) / (2 * area)
+                    e1_3 = edge(ss_tri.C, ss_tri.A, x1, y1) / (2 * area)
+
+                    #check1 = 0
+                    #check2 = 0
+                    #check3 = 0
+
+                    if ((e0_1 + check1 >= 0) and (e0_2 >= 0 + check2) and (e0_3 >= 0 + check3)):
+                        coverage[y][j + 0] = 1.0
+
+                    if ((e1_1 >= 0 + check1) and (e1_2 >= 0 + check2) and (e1_3 >= 0 + check1)):
+                        coverage[y][j + 1] = 1.0
             
-            if (edge1 >= 0 and edge2 >= 0 and edge3 >= 0):
+            
                 if (msaa == 2):
                     screen[y][j][0] = (((ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3) * coverage[y][j]) + ((ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3) * coverage[y][j + 1])) / 2
                     screen[y][j][1] = (((ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3) * coverage[y][j]) + ((ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3) * coverage[y][j + 1])) / 2
@@ -122,7 +133,6 @@ plt.axis('off')
 plt.show()
 
 #Save image
-'''
 img_unit8 = (screen * 255).astype(np.uint8)
 img = Image.fromarray(img_unit8)
-img.save('lossless.png', mode='RGB')'''
+img.save('lossless.png', mode='RGB')
