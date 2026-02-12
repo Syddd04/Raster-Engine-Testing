@@ -27,36 +27,167 @@ def validEdge (v0, v1):
 
 #Set up machines
 
-msaa : int = 2 
+msaa : int = 2
 w = 640
 h = 480
 projector = Projector(w, h, 1, 10) #width, height, near plane, far plane
 screen = np.zeros((h,w,3))
-z_buffer = np.ones((h,w)) * -10
+z_buffer = np.full((h, w, 2), np.inf)
 
-vx1 = [-0.8, -1.4, 0.8]
-vy1 = [-0.6, -0.4, -0.6]
-z1  = [-2,   -2,   -2]
+vx1 = [
+    # Front face (z = -3)
+    -1, -1,
+    # Back face (z = -5)
+     1,  1,
+    # Left face (x = -1)
+    -1, -1,
+    # Right face (x = 1)
+     1,  1,
+    # Top face (y = 1)
+    -1,  1,
+    # Bottom face (y = -1)
+    -1,  1,
+]
 
-vx2 = [0.8, -0.8, 1.4]
-vy2 = [-0.6, -0.6, 0.4]
-z2  = [-2,   -2,   -6]
+vx2 = [
+    # Front
+     1,  1,
+    # Back
+    -1, -1,
+    # Left
+    -1, -1,
+    # Right
+     1,  1,
+    # Top
+     1, -1,
+    # Bottom
+     1, -1,
+]
 
-vx3 = [0.0, 0.0, 0.0]
-vy3 = [0.6, 0.6, 0.6]
-z3  = [-2,  -2,  -2]
+vx3 = [
+    # Front
+     1, -1,
+    # Back
+    -1,  1,
+    # Left
+    -1, -1,
+    # Right
+     1,  1,
+    # Top
+     1, -1,
+    # Bottom
+     1, -1,
+]
 
-col1 = [[1,0,0], [0,0,1], [0,0,1]]
-col2 = [[0,1,0], [0,1,0], [0,1,0]]
-col3 = [[0,0,1], [1,0,0], [1,0,0]]
+vy1 = [
+    # Front
+    -1,  1,
+    # Back
+    -1,  1,
+    # Left
+    -1,  1,
+    # Right
+    -1,  1,
+    # Top
+     1,  1,
+    # Bottom
+    -1, -1,
+]
+
+vy2 = [
+    # Front
+    -1,  1,
+    # Back
+    -1,  1,
+    # Left
+    -1,  1,
+    # Right
+    -1,  1,
+    # Top
+     1,  1,
+    # Bottom
+    -1, -1,
+]
+
+vy3 = [
+    # Front
+     1, -1,
+    # Back
+     1, -1,
+    # Left
+     1, -1,
+    # Right
+     1, -1,
+    # Top
+     1,  1,
+    # Bottom
+    -1, -1,
+]
+
+vz1 = [
+    # Front
+    -3, -3,
+    # Back
+    -5, -5,
+    # Left
+    -5, -3,
+    # Right
+    -3, -5,
+    # Top
+    -3, -3,
+    # Bottom
+    -5, -5,
+]
+
+vz2 = [
+    # Front
+    -3, -3,
+    # Back
+    -5, -5,
+    # Left
+    -3, -5,
+    # Right
+    -5, -3,
+    # Top
+    -3, -3,
+    # Bottom
+    -5, -5,
+]
+
+vz3 = [
+    # Front
+    -3, -3,
+    # Back
+    -5, -5,
+    # Left
+    -3, -5,
+    # Right
+    -5, -3,
+    # Top
+    -3, -3,
+    # Bottom
+    -5, -5,
+]
+
+col1 = [
+    [1,0,0], [1,0,0],     # front – red
+    [0,1,0], [0,1,0],     # back – green
+    [0,0,1], [0,0,1],     # left – blue
+    [1,1,0], [1,1,0],     # right – yellow
+    [1,0,1], [1,0,1],     # top – magenta
+    [0,1,1], [0,1,1],     # bottom – cyan
+]
+
+col2 = col1.copy()
+col3 = col1.copy()
 
 for i in range(0,len(vx1)):
 
     #Get primitives
 
-    vertex1 = Vertex(vx1[i], vy1[i], z1[i], col1[i])
-    vertex2 = Vertex(vx2[i], vy2[i], z2[i], col2[i])
-    vertex3 = Vertex(vx3[i], vy3[i], z3[i], col3[i])
+    vertex1 = Vertex(vx1[i], vy1[i], vz1[i], col1[i])
+    vertex2 = Vertex(vx2[i], vy2[i], vz2[i], col2[i])
+    vertex3 = Vertex(vx3[i], vy3[i], vz3[i], col3[i])
 
     triangle = Triangle(vertex1, vertex2, vertex3)
 
@@ -80,6 +211,8 @@ for i in range(0,len(vx1)):
     #Do edge testing
     for y in range(ss_min.y, ss_max.y):
         for j in range(ss_min.x, ss_max.x):
+            if area == 0:
+                continue
             bx = j + 0.5
             by = y + 0.5
 
@@ -108,17 +241,30 @@ for i in range(0,len(vx1)):
                 if ((e0_1 + check1 >= 0) and (e0_2 >= 0 + check2) and (e0_3 >= 0 + check3)):
                     cov0 = 1
 
-                if ((e1_1 >= 0 + check1) and (e1_2 >= 0 + check2) and (e1_3 >= 0 + check1)):
+                if ((e1_1 >= 0 + check1) and (e1_2 >= 0 + check2) and (e1_3 >= 0 + check3)):
                     cov1 = 1
 
-                z = (((ss_tri.A.z * e0_1 + ss_tri.B.z * e0_2 + ss_tri.C.z * e0_3) * cov0) + ((ss_tri.A.z * e1_1 + ss_tri.B.z * e1_2 + ss_tri.C.z * e1_3) * cov1)) / 2
+                z0 = (ss_tri.A.z * e0_1 + ss_tri.B.z * e0_2 + ss_tri.C.z * e0_3)
+                z1 = (ss_tri.A.z * e1_1 + ss_tri.B.z * e1_2 + ss_tri.C.z * e1_3)
 
-                if ((cov0 or cov1) and z >= z_buffer[y][j]):
-                    screen[y][j][0] += (((ss_tri.A.R * e0_1 + ss_tri.B.R * e0_2 + ss_tri.C.R * e0_3) * cov0) + ((ss_tri.A.R * e1_1 + ss_tri.B.R * e1_2 + ss_tri.C.R * e1_3) * cov1)) / 2
-                    screen[y][j][1] += (((ss_tri.A.G * e0_1 + ss_tri.B.G * e0_2 + ss_tri.C.G * e0_3) * cov0) + ((ss_tri.A.G * e1_1 + ss_tri.B.G * e1_2 + ss_tri.C.G * e1_3) * cov1)) / 2
-                    screen[y][j][2] += (((ss_tri.A.B * e0_1 + ss_tri.B.B * e0_2 + ss_tri.C.B * e0_3) * cov0) + ((ss_tri.A.B * e1_1 + ss_tri.B.B * e1_2 + ss_tri.C.B * e1_3) * cov1)) / 2
-                    
-                    z_buffer[y][j] += z
+                if ((cov0 or cov1) and (z0 <= z_buffer[y][j][0] or z1 <= z_buffer[y][j][1])):
+                    r = 0
+                    g = 0
+                    b = 0
+                    if (z0 <= z_buffer[y][j][0] and cov0):
+                        z_buffer[y][j][0] = z0
+                        r += ((ss_tri.A.R * e0_1 + ss_tri.B.R * e0_2 + ss_tri.C.R * e0_3) * cov0)
+                        g += ((ss_tri.A.G * e0_1 + ss_tri.B.G * e0_2 + ss_tri.C.G * e0_3) * cov0)
+                        b += ((ss_tri.A.B * e0_1 + ss_tri.B.B * e0_2 + ss_tri.C.B * e0_3) * cov0)
+                    if (z1 <= z_buffer[y][j][1] and cov1):
+                        z_buffer[y][j][1] = z1
+                        r += ((ss_tri.A.R * e1_1 + ss_tri.B.R * e1_2 + ss_tri.C.R * e1_3) * cov1)
+                        g += ((ss_tri.A.G * e1_1 + ss_tri.B.G * e1_2 + ss_tri.C.G * e1_3) * cov1)
+                        b += ((ss_tri.A.B * e1_1 + ss_tri.B.B * e1_2 + ss_tri.C.B * e1_3) * cov1)
+
+                    screen[y][j][0] += r / 2
+                    screen[y][j][1] += g / 2
+                    screen[y][j][2] += b / 2
 
             else:
                 edge1 = edge(ss_tri.A, ss_tri.B, bx, by) / (2 * area) #Similar logic. Divide by 2 to get triangle area and then divide by area to normalize the result. The cross product above gives unnormalized barycentric coordinates. 
@@ -127,12 +273,12 @@ for i in range(0,len(vx1)):
 
                 z = ss_tri.A.z * edge1 + ss_tri.B.z * edge2 + ss_tri.C.z * edge3
 
-                if ((edge1 + check1 >= 0) and (edge2 + check2) >= 0 and (edge3 + check3) >= 0 and z >= z_buffer[y][j]):
+                if ((edge1 + check1 >= 0) and (edge2 + check2) >= 0 and (edge3 + check3) >= 0 and z <= z_buffer[y][j][0]):
                     screen[y][j][0] = ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3
                     screen[y][j][1] = ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3
                     screen[y][j][2] = ss_tri.A.B * edge1 + ss_tri.B.B * edge2 + ss_tri.C.B * edge3
 
-                    z_buffer[y][j] = z
+                    z_buffer[y][j][0] = z
 
 plt.imshow(screen)
 plt.axis('off')
