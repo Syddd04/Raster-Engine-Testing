@@ -32,6 +32,7 @@ w = 640
 h = 480
 projector = Projector(w, h, 1, 10) #width, height, near plane, far plane
 screen = np.zeros((h,w,3))
+z_buffer = np.ones((h,w)) * -10
 
 vx1 = [-0.8, -1.4, 0.8]
 vy1 = [-0.6, -0.4, -0.6]
@@ -39,7 +40,7 @@ z1  = [-2,   -2,   -2]
 
 vx2 = [0.8, -0.8, 1.4]
 vy2 = [-0.6, -0.6, 0.4]
-z2  = [-2,   -2,   -2]
+z2  = [-2,   -2,   -6]
 
 vx3 = [0.0, 0.0, 0.0]
 vy3 = [0.6, 0.6, 0.6]
@@ -86,9 +87,7 @@ for i in range(0,len(vx1)):
             check2 = 0 if validEdge(ss_tri.B, ss_tri.C) else -1e-9
             check3 = 0 if validEdge(ss_tri.C, ss_tri.A) else -1e-9
 
-
             if (msaa == 2):
-
                 x0 = j + 0.25
                 y0 = y + 0.25
 
@@ -112,23 +111,33 @@ for i in range(0,len(vx1)):
                 if ((e1_1 >= 0 + check1) and (e1_2 >= 0 + check2) and (e1_3 >= 0 + check1)):
                     cov1 = 1
 
-                if (cov0 or cov1):
+                z = (((ss_tri.A.z * e0_1 + ss_tri.B.z * e0_2 + ss_tri.C.z * e0_3) * cov0) + ((ss_tri.A.z * e1_1 + ss_tri.B.z * e1_2 + ss_tri.C.z * e1_3) * cov1)) / 2
+
+                if ((cov0 or cov1) and z >= z_buffer[y][j]):
                     screen[y][j][0] += (((ss_tri.A.R * e0_1 + ss_tri.B.R * e0_2 + ss_tri.C.R * e0_3) * cov0) + ((ss_tri.A.R * e1_1 + ss_tri.B.R * e1_2 + ss_tri.C.R * e1_3) * cov1)) / 2
                     screen[y][j][1] += (((ss_tri.A.G * e0_1 + ss_tri.B.G * e0_2 + ss_tri.C.G * e0_3) * cov0) + ((ss_tri.A.G * e1_1 + ss_tri.B.G * e1_2 + ss_tri.C.G * e1_3) * cov1)) / 2
                     screen[y][j][2] += (((ss_tri.A.B * e0_1 + ss_tri.B.B * e0_2 + ss_tri.C.B * e0_3) * cov0) + ((ss_tri.A.B * e1_1 + ss_tri.B.B * e1_2 + ss_tri.C.B * e1_3) * cov1)) / 2
+                    
+                    z_buffer[y][j] += z
 
             else:
                 edge1 = edge(ss_tri.A, ss_tri.B, bx, by) / (2 * area) #Similar logic. Divide by 2 to get triangle area and then divide by area to normalize the result. The cross product above gives unnormalized barycentric coordinates. 
                 edge2 = edge(ss_tri.B, ss_tri.C, bx, by) / (2 * area)
                 edge3 = edge(ss_tri.C, ss_tri.A, bx, by) / (2 * area)
 
-                if ((edge1 + check1 >= 0) and (edge2 + check2) >= 0 and (edge3 + check3) >= 0):
+                z = ss_tri.A.z * edge1 + ss_tri.B.z * edge2 + ss_tri.C.z * edge3
+
+                if ((edge1 + check1 >= 0) and (edge2 + check2) >= 0 and (edge3 + check3) >= 0 and z >= z_buffer[y][j]):
                     screen[y][j][0] = ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3
                     screen[y][j][1] = ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3
                     screen[y][j][2] = ss_tri.A.B * edge1 + ss_tri.B.B * edge2 + ss_tri.C.B * edge3
+
+                    z_buffer[y][j] = z
+
 plt.imshow(screen)
 plt.axis('off')
 plt.show()
+
 #Save image
 img_unit8 = (screen * 255).astype(np.uint8)
 img = Image.fromarray(img_unit8)
