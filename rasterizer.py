@@ -27,30 +27,29 @@ def validEdge (v0, v1):
 
 #Set up machines
 
-msaa : int = 2
+msaa : int = 2 
 w = 640
 h = 480
 projector = Projector(w, h, 1, 10) #width, height, near plane, far plane
 screen = np.zeros((h,w,3))
-coverage = np.zeros((h, w*msaa))
 
-vx1 = [-0.8, -1.4]
-vx2 = [0.8, -0.8]
-vx3 = [0.0, 0.0]
+vx1 = [-0.8, -1.4, 0.8]
+vy1 = [-0.6, -0.4, -0.6]
+z1  = [-2,   -2,   -2]
 
-vy1 = [-0.6, -0.4]
-vy2 = [-0.6, -0.6]
-vy3 = [0.6, 0.6]
+vx2 = [0.8, -0.8, 1.4]
+vy2 = [-0.6, -0.6, 0.4]
+z2  = [-2,   -2,   -2]
 
-z1 = [-2, -2]
-z2 = [-2, -2]
-z3 = [-2, -2]
+vx3 = [0.0, 0.0, 0.0]
+vy3 = [0.6, 0.6, 0.6]
+z3  = [-2,  -2,  -2]
 
-col1 = [[1,0,0], [0,0,1]]
-col2 = [[0,1,0], [0,1,0]]
-col3 = [[0,0,1], [1,0,0]]
+col1 = [[1,0,0], [0,0,1], [0,0,1]]
+col2 = [[0,1,0], [0,1,0], [0,1,0]]
+col3 = [[0,0,1], [1,0,0], [1,0,0]]
 
-for i in range(0,2):
+for i in range(0,len(vx1)):
 
     #Get primitives
 
@@ -83,55 +82,53 @@ for i in range(0,2):
             bx = j + 0.5
             by = y + 0.5
 
-            edge1 = edge(ss_tri.A, ss_tri.B, bx, by) / (2 * area) #Similar logic. Divide by 2 to get triangle area and then divide by area to normalize the result. The cross product above gives unnormalized barycentric coordinates. 
-            edge2 = edge(ss_tri.B, ss_tri.C, bx, by) / (2 * area)
-            edge3 = edge(ss_tri.C, ss_tri.A, bx, by) / (2 * area)
-
-            check1 = 0 if validEdge(ss_tri.A, ss_tri.B) else -1e-9
+            check1 = 0 if validEdge(ss_tri.A, ss_tri.B) else -1e-9 #adjust for subtle fp errors
             check2 = 0 if validEdge(ss_tri.B, ss_tri.C) else -1e-9
             check3 = 0 if validEdge(ss_tri.C, ss_tri.A) else -1e-9
 
-            if ((edge1 + check1 >= 0) and (edge2 + check2) >= 0 and (edge3 + check3) >= 0):
 
-                if (msaa == 2):
-                    x0 = j + 0.25
-                    x1 = j + 0.75
+            if (msaa == 2):
 
-                    y0 = y + 0.75
-                    y1 = y + 0.25
+                x0 = j + 0.25
+                y0 = y + 0.25
 
-                    e0_1 = edge(ss_tri.A, ss_tri.B, x0, y0) / (2 * area)
-                    e0_2 = edge(ss_tri.B, ss_tri.C, x0, y0) / (2 * area)
-                    e0_3 = edge(ss_tri.C, ss_tri.A, x0, y0) / (2 * area)
+                x1 = j + 0.75
+                y1 = y + 0.75
 
-                    e1_1 = edge(ss_tri.A, ss_tri.B, x1, y1) / (2 * area)
-                    e1_2 = edge(ss_tri.B, ss_tri.C, x1, y1) / (2 * area)
-                    e1_3 = edge(ss_tri.C, ss_tri.A, x1, y1) / (2 * area)
+                e0_1 = edge(ss_tri.A, ss_tri.B, x0, y0) / (2 * area)
+                e0_2 = edge(ss_tri.B, ss_tri.C, x0, y0) / (2 * area)
+                e0_3 = edge(ss_tri.C, ss_tri.A, x0, y0) / (2 * area)
 
-                    #check1 = 0
-                    #check2 = 0
-                    #check3 = 0
+                e1_1 = edge(ss_tri.A, ss_tri.B, x1, y1) / (2 * area)
+                e1_2 = edge(ss_tri.B, ss_tri.C, x1, y1) / (2 * area)
+                e1_3 = edge(ss_tri.C, ss_tri.A, x1, y1) / (2 * area)
 
-                    if ((e0_1 + check1 >= 0) and (e0_2 >= 0 + check2) and (e0_3 >= 0 + check3)):
-                        coverage[y][j + 0] = 1.0
+                cov0 = 0
+                cov1 = 0
 
-                    if ((e1_1 >= 0 + check1) and (e1_2 >= 0 + check2) and (e1_3 >= 0 + check1)):
-                        coverage[y][j + 1] = 1.0
-            
-            
-                if (msaa == 2):
-                    screen[y][j][0] = (((ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3) * coverage[y][j]) + ((ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3) * coverage[y][j + 1])) / 2
-                    screen[y][j][1] = (((ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3) * coverage[y][j]) + ((ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3) * coverage[y][j + 1])) / 2
-                    screen[y][j][2] = (((ss_tri.A.B * edge1 + ss_tri.B.B * edge2 + ss_tri.C.B * edge3) * coverage[y][j]) + ((ss_tri.A.B * edge1 + ss_tri.B.B * edge2 + ss_tri.C.B * edge3) * coverage[y][j + 1])) / 2
-                else:
+                if ((e0_1 + check1 >= 0) and (e0_2 >= 0 + check2) and (e0_3 >= 0 + check3)):
+                    cov0 = 1
+
+                if ((e1_1 >= 0 + check1) and (e1_2 >= 0 + check2) and (e1_3 >= 0 + check1)):
+                    cov1 = 1
+
+                if (cov0 or cov1):
+                    screen[y][j][0] += (((ss_tri.A.R * e0_1 + ss_tri.B.R * e0_2 + ss_tri.C.R * e0_3) * cov0) + ((ss_tri.A.R * e1_1 + ss_tri.B.R * e1_2 + ss_tri.C.R * e1_3) * cov1)) / 2
+                    screen[y][j][1] += (((ss_tri.A.G * e0_1 + ss_tri.B.G * e0_2 + ss_tri.C.G * e0_3) * cov0) + ((ss_tri.A.G * e1_1 + ss_tri.B.G * e1_2 + ss_tri.C.G * e1_3) * cov1)) / 2
+                    screen[y][j][2] += (((ss_tri.A.B * e0_1 + ss_tri.B.B * e0_2 + ss_tri.C.B * e0_3) * cov0) + ((ss_tri.A.B * e1_1 + ss_tri.B.B * e1_2 + ss_tri.C.B * e1_3) * cov1)) / 2
+
+            else:
+                edge1 = edge(ss_tri.A, ss_tri.B, bx, by) / (2 * area) #Similar logic. Divide by 2 to get triangle area and then divide by area to normalize the result. The cross product above gives unnormalized barycentric coordinates. 
+                edge2 = edge(ss_tri.B, ss_tri.C, bx, by) / (2 * area)
+                edge3 = edge(ss_tri.C, ss_tri.A, bx, by) / (2 * area)
+
+                if ((edge1 + check1 >= 0) and (edge2 + check2) >= 0 and (edge3 + check3) >= 0):
                     screen[y][j][0] = ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3
                     screen[y][j][1] = ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3
                     screen[y][j][2] = ss_tri.A.B * edge1 + ss_tri.B.B * edge2 + ss_tri.C.B * edge3
-
 plt.imshow(screen)
 plt.axis('off')
 plt.show()
-
 #Save image
 img_unit8 = (screen * 255).astype(np.uint8)
 img = Image.fromarray(img_unit8)
