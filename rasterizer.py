@@ -27,6 +27,11 @@ class Rasterizer():
         top = edge_vec[1] == 0 and edge_vec[0] < 0  
         left = edge_vec[1] < 0                      
         return top or left
+    
+    def de_dx(self, a, b):
+        return -b.y + a.y
+    def de_dy(self, a, b):
+        return b.x - a.x
 
     def __init__(self, vx1, vy1, vz1, vx2, vy2, vz2, vx3, vy3, vz3, col1 = [[]], col2 = [[]], col3 = [[]], u1 = [], u2 = [], u3 = [], v1 = [], v2 = [], v3 = [], msaa = 0, w = 640, h = 480, near = 1, far = 10):
         #numpy arrays, all of them. Cols will be nx3x3 array
@@ -90,34 +95,81 @@ class Rasterizer():
             if area < 0:
                 ss_tri.B, ss_tri.C = ss_tri.C, ss_tri.B
                 area = -area
+            norm_factor = 1 / (2 * area)
+
+            if (self.msaa == 2):
+                x0 = ss_min.x + 0.25
+                y0 = ss_min.y + 0.25
+                x1 = ss_min.x + 0.75
+                y1 = ss_min.y + 0.75
+
+                e0_1 = self.edge(ss_tri.B, ss_tri.C, x0, y0) * norm_factor
+                e0_2 = self.edge(ss_tri.C, ss_tri.A, x0, y0) * norm_factor
+                e0_3 = self.edge(ss_tri.A, ss_tri.B, x0, y0) * norm_factor
+                e1_1 = self.edge(ss_tri.B, ss_tri.C, x1, y1) * norm_factor
+                e1_2 = self.edge(ss_tri.C, ss_tri.A, x1, y1) * norm_factor
+                e1_3 = self.edge(ss_tri.A, ss_tri.B, x1, y1) * norm_factor
+
+                e0_1_ini = e0_1
+                e0_2_ini = e0_2
+                e0_3_ini = e0_3
+                e1_1_ini = e1_1
+                e1_2_ini = e1_2
+                e1_3_ini = e1_3
+
+                de0_dx1 = self.de_dx(ss_tri.B, ss_tri.C) * norm_factor
+                de0_dx2 = self.de_dx(ss_tri.C, ss_tri.A) * norm_factor
+                de0_dx3 = self.de_dx(ss_tri.A, ss_tri.B) * norm_factor
+                de1_dx1 = self.de_dx(ss_tri.B, ss_tri.C) * norm_factor
+                de1_dx2 = self.de_dx(ss_tri.C, ss_tri.A) * norm_factor
+                de1_dx3 = self.de_dx(ss_tri.A, ss_tri.B) * norm_factor
+
+                de0_dy1 = self.de_dy(ss_tri.B, ss_tri.C) * norm_factor
+                de0_dy2 = self.de_dy(ss_tri.C, ss_tri.A) * norm_factor
+                de0_dy3 = self.de_dy(ss_tri.A, ss_tri.B) * norm_factor
+                de1_dy1 = self.de_dy(ss_tri.B, ss_tri.C) * norm_factor
+                de1_dy2 = self.de_dy(ss_tri.C, ss_tri.A) * norm_factor
+                de1_dy3 = self.de_dy(ss_tri.A, ss_tri.B) * norm_factor
+            elif (self.msaa == 0):
+                bx = ss_min.x + 0.5
+                by = ss_min.y + 0.5
+                edge1 = self.edge(ss_tri.B, ss_tri.C, bx, by) * norm_factor #Similar logic. Divide by 2 to get triangle area and then divide by area to normalize the result. The cross product above gives unnormalized barycentric coordinates. 
+                edge2 = self.edge(ss_tri.C, ss_tri.A, bx, by) * norm_factor
+                edge3 = self.edge(ss_tri.A, ss_tri.B, bx, by) * norm_factor
+                de_dx1 = self.de_dx(ss_tri.B, ss_tri.C) * norm_factor
+                de_dx2 = self.de_dx(ss_tri.C, ss_tri.A) * norm_factor
+                de_dx3 = self.de_dx(ss_tri.A, ss_tri.B) * norm_factor
+                de_dy1 = self.de_dy(ss_tri.B, ss_tri.C) * norm_factor
+                de_dy2 = self.de_dy(ss_tri.C, ss_tri.A) * norm_factor
+                de_dy3 = self.de_dy(ss_tri.A, ss_tri.B) * norm_factor
+                e_ini1 = edge1
+                e_ini2 = edge2
+                e_ini3 = edge3
+
+            check1 = 0 if self.validEdge(ss_tri.B, ss_tri.C) else -1e-12 #adjust for subtle fp errors
+            check2 = 0 if self.validEdge(ss_tri.C, ss_tri.A) else -1e-12
+            check3 = 0 if self.validEdge(ss_tri.A, ss_tri.B) else -1e-12
 
             #Do edge testing
             for y in range(ss_min.y, ss_max.y):
+
+                if (self.msaa == 2):
+                    e0_1 = e0_1_ini
+                    e0_2 = e0_2_ini
+                    e0_3 = e0_3_ini
+                    e1_1 = e1_1_ini
+                    e1_2 = e1_2_ini
+                    e1_3 = e1_3_ini
+                else:
+                    edge1 = e_ini1
+                    edge2 = e_ini2
+                    edge3 = e_ini3
+                    
                 for j in range(ss_min.x, ss_max.x):
                     if area == 0:
                         continue
-                    bx = j + 0.5
-                    by = y + 0.5
-
-                    check1 = 0 if self.validEdge(ss_tri.B, ss_tri.C) else -1e-12 #adjust for subtle fp errors
-                    check2 = 0 if self.validEdge(ss_tri.C, ss_tri.A) else -1e-12
-                    check3 = 0 if self.validEdge(ss_tri.A, ss_tri.B) else -1e-12
 
                     if (self.msaa == 2):
-                        x0 = j + 0.25
-                        y0 = y + 0.25
-
-                        x1 = j + 0.75
-                        y1 = y + 0.75
-
-                        e0_1 = self.edge(ss_tri.B, ss_tri.C, x0, y0) / (2 * area)
-                        e0_2 = self.edge(ss_tri.C, ss_tri.A, x0, y0) / (2 * area)
-                        e0_3 = self.edge(ss_tri.A, ss_tri.B, x0, y0) / (2 * area)
-
-                        e1_1 = self.edge(ss_tri.B, ss_tri.C, x1, y1) / (2 * area)
-                        e1_2 = self.edge(ss_tri.C, ss_tri.A, x1, y1) / (2 * area)
-                        e1_3 = self.edge(ss_tri.A, ss_tri.B, x1, y1) / (2 * area)
-
                         cov0 = 0
                         cov1 = 0
 
@@ -172,10 +224,6 @@ class Rasterizer():
                             self.screen[y][j][2] = (b0 + b1) / 2
 
                     else:
-                        edge1 = self.edge(ss_tri.B, ss_tri.C, bx, by) / (2 * area) #Similar logic. Divide by 2 to get triangle area and then divide by area to normalize the result. The cross product above gives unnormalized barycentric coordinates. 
-                        edge2 = self.edge(ss_tri.C, ss_tri.A, bx, by) / (2 * area)
-                        edge3 = self.edge(ss_tri.A, ss_tri.B, bx, by) / (2 * area)
-
                         z = ss_tri.A.z * edge1 + ss_tri.B.z * edge2 + ss_tri.C.z * edge3
 
                         if ((edge1 + check1 >= 0) and (edge2 + check2 >= 0) and (edge3 + check3 >= 0) and z <= self.z_buffer[y][j][0]):
@@ -184,11 +232,35 @@ class Rasterizer():
                             self.screen[y][j][2] = ss_tri.A.B * edge1 + ss_tri.B.B * edge2 + ss_tri.C.B * edge3
 
                             self.z_buffer[y][j][0] = z
-                        else:
-                            continue
+                        
+                    if (self.msaa == 2):
+                        e0_1 += de0_dx1
+                        e0_2 += de0_dx2
+                        e0_3 += de0_dx3
+                        e1_1 += de1_dx1
+                        e1_2 += de1_dx2
+                        e1_3 += de1_dx3
+                    else:
+                        edge1 += de_dx1
+                        edge2 += de_dx2
+                        edge3 += de_dx3
+                
+                if (self.msaa == 2):
+                    e0_1_ini += de0_dy1
+                    e0_2_ini += de0_dy2
+                    e0_3_ini += de0_dy3
+                    e1_1_ini += de1_dy1
+                    e1_2_ini += de1_dy2
+                    e1_3_ini += de1_dy3
+                else:
+                    e_ini1 += de_dy1
+                    e_ini2 += de_dy2
+                    e_ini3 += de_dy3
+                    
+                    
 
     def showScreen(self):
-        plt.imshow(self.screen)
+        plt.imshow(np.clip(self.screen, 0.0, 1.0))
         plt.axis('off')
         plt.show()
 

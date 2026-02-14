@@ -51,7 +51,7 @@ rasterEngine = Rasterizer(
     vx2, vy2, vz2,
     vx3, vy3, vz3,
     col1, col2, col3,
-    msaa=0, w=640, h=480
+    msaa=2, w=640, h=480
 )
 
 start = perf_counter()
