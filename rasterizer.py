@@ -61,6 +61,7 @@ class Rasterizer():
         self.projector = Projector(self.w, self.h, near, far) #width, height, near plane, far plane
         self.screen = np.zeros((h,w,3))
         self.z_buffer = np.full((h, w, 2), np.inf)
+        self.color_buffer = np.zeros((h,w,2,3))
 
     def render(self):
         for i in range(0,len(self.vx1)):
@@ -98,9 +99,9 @@ class Rasterizer():
                     bx = j + 0.5
                     by = y + 0.5
 
-                    check1 = 0 if self.validEdge(ss_tri.A, ss_tri.B) else -1e-12 #adjust for subtle fp errors
-                    check2 = 0 if self.validEdge(ss_tri.B, ss_tri.C) else -1e-12
-                    check3 = 0 if self.validEdge(ss_tri.C, ss_tri.A) else -1e-12
+                    check1 = 0 if self.validEdge(ss_tri.B, ss_tri.C) else -1e-12 #adjust for subtle fp errors
+                    check2 = 0 if self.validEdge(ss_tri.C, ss_tri.A) else -1e-12
+                    check3 = 0 if self.validEdge(ss_tri.A, ss_tri.B) else -1e-12
 
                     if (self.msaa == 2):
                         x0 = j + 0.25
@@ -109,13 +110,13 @@ class Rasterizer():
                         x1 = j + 0.75
                         y1 = y + 0.75
 
-                        e0_1 = self.edge(ss_tri.A, ss_tri.B, x0, y0) / (2 * area)
-                        e0_2 = self.edge(ss_tri.B, ss_tri.C, x0, y0) / (2 * area)
-                        e0_3 = self.edge(ss_tri.C, ss_tri.A, x0, y0) / (2 * area)
+                        e0_1 = self.edge(ss_tri.B, ss_tri.C, x0, y0) / (2 * area)
+                        e0_2 = self.edge(ss_tri.C, ss_tri.A, x0, y0) / (2 * area)
+                        e0_3 = self.edge(ss_tri.A, ss_tri.B, x0, y0) / (2 * area)
 
-                        e1_1 = self.edge(ss_tri.A, ss_tri.B, x1, y1) / (2 * area)
-                        e1_2 = self.edge(ss_tri.B, ss_tri.C, x1, y1) / (2 * area)
-                        e1_3 = self.edge(ss_tri.C, ss_tri.A, x1, y1) / (2 * area)
+                        e1_1 = self.edge(ss_tri.B, ss_tri.C, x1, y1) / (2 * area)
+                        e1_2 = self.edge(ss_tri.C, ss_tri.A, x1, y1) / (2 * area)
+                        e1_3 = self.edge(ss_tri.A, ss_tri.B, x1, y1) / (2 * area)
 
                         cov0 = 0
                         cov1 = 0
@@ -129,39 +130,51 @@ class Rasterizer():
                         z0 = (ss_tri.A.z * e0_1 + ss_tri.B.z * e0_2 + ss_tri.C.z * e0_3)
                         z1 = (ss_tri.A.z * e1_1 + ss_tri.B.z * e1_2 + ss_tri.C.z * e1_3)
 
-                        if ((cov0 or cov1) and (z0 <= self.z_buffer[y][j][0] or z1 <= self.z_buffer[y][j][1])):
-                            r = 0
-                            g = 0
-                            b = 0
+                        if ((cov0 and z0 <= self.z_buffer[y][j][0]) or (cov1 and z1 <= self.z_buffer[y][j][1])):
+                            r0 = self.color_buffer[y][j][0][0]
+                            g0 = self.color_buffer[y][j][0][1]
+                            b0 = self.color_buffer[y][j][0][2]
+
+                            r1 = self.color_buffer[y][j][1][0]
+                            g1 = self.color_buffer[y][j][1][1]
+                            b1 = self.color_buffer[y][j][1][2]
 
                             if (z0 <= self.z_buffer[y][j][0] and cov0):
                                 self.z_buffer[y][j][0] = z0
-                                r += ((ss_tri.A.R * e0_1 + ss_tri.B.R * e0_2 + ss_tri.C.R * e0_3))
-                                g += ((ss_tri.A.G * e0_1 + ss_tri.B.G * e0_2 + ss_tri.C.G * e0_3))
-                                b += ((ss_tri.A.B * e0_1 + ss_tri.B.B * e0_2 + ss_tri.C.B * e0_3))
+                                r0 = ((ss_tri.A.R * e0_1 + ss_tri.B.R * e0_2 + ss_tri.C.R * e0_3))
+                                g0 = ((ss_tri.A.G * e0_1 + ss_tri.B.G * e0_2 + ss_tri.C.G * e0_3))
+                                b0 = ((ss_tri.A.B * e0_1 + ss_tri.B.B * e0_2 + ss_tri.C.B * e0_3))
                             elif(cov0):
-                                r += self.screen[y][j][0]
-                                g += self.screen[y][j][1]
-                                b += self.screen[y][j][2]
+                                r0 = self.color_buffer[y][j][0][0]
+                                g0 = self.color_buffer[y][j][0][1]
+                                b0 = self.color_buffer[y][j][0][2]
+
+                            self.color_buffer[y][j][0][0] = r0
+                            self.color_buffer[y][j][0][1] = g0
+                            self.color_buffer[y][j][0][2] = b0
 
                             if (z1 <= self.z_buffer[y][j][1] and cov1):
                                 self.z_buffer[y][j][1] = z1
-                                r += ((ss_tri.A.R * e1_1 + ss_tri.B.R * e1_2 + ss_tri.C.R * e1_3))
-                                g += ((ss_tri.A.G * e1_1 + ss_tri.B.G * e1_2 + ss_tri.C.G * e1_3))
-                                b += ((ss_tri.A.B * e1_1 + ss_tri.B.B * e1_2 + ss_tri.C.B * e1_3))
+                                r1 = ((ss_tri.A.R * e1_1 + ss_tri.B.R * e1_2 + ss_tri.C.R * e1_3))
+                                g1 = ((ss_tri.A.G * e1_1 + ss_tri.B.G * e1_2 + ss_tri.C.G * e1_3))
+                                b1 = ((ss_tri.A.B * e1_1 + ss_tri.B.B * e1_2 + ss_tri.C.B * e1_3))
                             elif (cov1):
-                                r += self.screen[y][j][0]
-                                g += self.screen[y][j][1]
-                                b += self.screen[y][j][2]
+                                r1 = self.color_buffer[y][j][1][0]
+                                g1 = self.color_buffer[y][j][1][1]
+                                b1 = self.color_buffer[y][j][1][2]
 
-                            self.screen[y][j][0] = r / 2
-                            self.screen[y][j][1] = g / 2
-                            self.screen[y][j][2] = b / 2
+                            self.color_buffer[y][j][1][0] = r1
+                            self.color_buffer[y][j][1][1] = g1
+                            self.color_buffer[y][j][1][2] = b1
+
+                            self.screen[y][j][0] = (r0 + r1) / 2
+                            self.screen[y][j][1] = (g0 + g1) / 2
+                            self.screen[y][j][2] = (b0 + b1) / 2
 
                     else:
-                        edge1 = self.edge(ss_tri.A, ss_tri.B, bx, by) / (2 * area) #Similar logic. Divide by 2 to get triangle area and then divide by area to normalize the result. The cross product above gives unnormalized barycentric coordinates. 
-                        edge2 = self.edge(ss_tri.B, ss_tri.C, bx, by) / (2 * area)
-                        edge3 = self.edge(ss_tri.C, ss_tri.A, bx, by) / (2 * area)
+                        edge1 = self.edge(ss_tri.B, ss_tri.C, bx, by) / (2 * area) #Similar logic. Divide by 2 to get triangle area and then divide by area to normalize the result. The cross product above gives unnormalized barycentric coordinates. 
+                        edge2 = self.edge(ss_tri.C, ss_tri.A, bx, by) / (2 * area)
+                        edge3 = self.edge(ss_tri.A, ss_tri.B, bx, by) / (2 * area)
 
                         z = ss_tri.A.z * edge1 + ss_tri.B.z * edge2 + ss_tri.C.z * edge3
 
