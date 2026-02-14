@@ -33,7 +33,9 @@ class Rasterizer():
     def de_dy(self, a, b):
         return b.x - a.x
 
-    def __init__(self, vx1, vy1, vz1, vx2, vy2, vz2, vx3, vy3, vz3, col1 = [[]], col2 = [[]], col3 = [[]], u1 = [], u2 = [], u3 = [], v1 = [], v2 = [], v3 = [], msaa = 0, w = 640, h = 480, near = 1, far = 10):
+    def __init__(self, vx1, vy1, vz1, vx2, vy2, vz2, vx3, vy3, vz3, col1 = [[]], col2 = [[]], col3 = [[]], u1 = [], u2 = [], u3 = [], v1 = [], v2 = [], v3 = [], msaa = 0, w = 854, h = 480, near = 1, far = 10):
+        msaa = 2 if (msaa > 2) else msaa
+        
         #numpy arrays, all of them. Cols will be nx3x3 array
         self.vx1 = vx1
         self.vy1 = vy1
@@ -65,8 +67,8 @@ class Rasterizer():
 
         self.projector = Projector(self.w, self.h, near, far) #width, height, near plane, far plane
         self.screen = np.zeros((h,w,3))
-        self.z_buffer = np.full((h, w, 2), np.inf)
-        self.color_buffer = np.zeros((h,w,2,3))
+        self.z_buffer = np.full((h,w,msaa if msaa > 0 else 1),np.inf)
+        self.color_buffer = np.zeros((h,w,msaa if msaa > 0 else 1,3))
 
     def render(self):
         for i in range(0,len(self.vx1)):
@@ -130,6 +132,7 @@ class Rasterizer():
                 de1_dy1 = self.de_dy(ss_tri.B, ss_tri.C) * norm_factor
                 de1_dy2 = self.de_dy(ss_tri.C, ss_tri.A) * norm_factor
                 de1_dy3 = self.de_dy(ss_tri.A, ss_tri.B) * norm_factor
+                
             elif (self.msaa == 0):
                 bx = ss_min.x + 0.5
                 by = ss_min.y + 0.5
