@@ -16,6 +16,6 @@ col1 = [[1,0,0], [0,0,1], [1,1,1]]
 col2 = [[0,1,0], [0,1,0], [1,1,1]]
 col3 = [[0,0,1], [1,0,0], [1,1,1]]
 
-rasterEngine = Rasterizer(vx1, vy1, vz1, vx2, vy2, vz2, vx3, vy3, vz3, col1, col2, col3, msaa = 0, w = 1280, h = 720)
+rasterEngine = Rasterizer(vx1, vy1, vz1, vx2, vy2, vz2, vx3, vy3, vz3, col1, col2, col3, msaa = 2, w = 1280, h = 720)
 rasterEngine.render()
 rasterEngine.showScreen()
