@@ -33,7 +33,7 @@ class Rasterizer():
     def de_dy(self, a, b):
         return b.x - a.x
 
-    def __init__(self, vx1, vy1, vz1, vx2, vy2, vz2, vx3, vy3, vz3, col1 = [[]], col2 = [[]], col3 = [[]], u1 = [], u2 = [], u3 = [], v1 = [], v2 = [], v3 = [], msaa = 0, w=1280, h=720, near = 1, far = 10, tex_id = [1]):
+    def __init__(self, vx1, vy1, vz1, vx2, vy2, vz2, vx3, vy3, vz3, col1 = [[]], col2 = [[]], col3 = [[]], u = [[-1, -1, -1]], v = [[-1, -1, -1]], msaa = 0, w=1280, h=720, near = 1, far = 10, tex_id = [1]):
         msaa = 2 if (msaa > 2) else msaa
         
         #numpy arrays, all of them. Cols will be nx3x3 array
@@ -53,19 +53,14 @@ class Rasterizer():
         self.col2 = col2
         self.col3 = col3
 
-        self.u1 = u1
-        self.u2 = u2
-        self.u3 = u3
-        
-        self.v1 = v1
-        self.v2 = v2
-        self.v3 = v3
+        self.u = u * len(vx1)
+        self.v = v * len(vx1)
 
         self.msaa = msaa
         self.w = w
         self.h = h
 
-        self.tex_ids = tex_id * len(self.vx1) #The sample name or number whatever you want for each triangle. len = no. triangles
+        self.tex_ids = tex_id * len(vx1) #The sample name or number whatever you want for each triangle. len = no. triangles
 
         self.projector = Projector(self.w, self.h, near, far) #width, height, near plane, far plane
         self.screen = np.zeros((h,w,3))
@@ -74,14 +69,44 @@ class Rasterizer():
         self.uv_buffer = np.full((h,w,2),np.nan) #if there is a valid uv to be applied for a pixel then np.isfinite(u) and np.isfinite(v)
         self.sampleId_buffer = np.ones((h,w)) * -1 #The sample you should be pulling from for each pixel. 
 
+    def getUV(self):
+        return self.uv_buffer
+    def getSamples(self):
+        return self.sampleId_buffer
+
+    def applyTextures(self, newRGB : np.array):
+        for h, datH in enumerate(newRGB):
+            for w, datW in enumerate(datH):
+
+                if not np.isfinite(self.uv_buffer[h][w][0]): 
+                    continue
+
+                if (self.msaa == 2):
+                    self.color_buffer[h][w][0][0] *= datW[0]
+                    self.color_buffer[h][w][0][1] *= datW[1]
+                    self.color_buffer[h][w][0][2] *= datW[2]
+
+                    self.color_buffer[h][w][1][0] *= datW[0]
+                    self.color_buffer[h][w][1][1] *= datW[1]
+                    self.color_buffer[h][w][1][2] *= datW[2]
+
+                    self.screen[h][w][0] = (self.color_buffer[h][w][0][0] + self.color_buffer[h][w][1][0]) / 2
+                    self.screen[h][w][1] = (self.color_buffer[h][w][0][1] + self.color_buffer[h][w][1][1]) / 2
+                    self.screen[h][w][2] = (self.color_buffer[h][w][0][2] + self.color_buffer[h][w][1][2]) / 2
+                else:
+                    self.screen[h][w][0] *= datW[0]
+                    self.screen[h][w][1] *= datW[1]
+                    self.screen[h][w][2] *= datW[2]
+            
+
     def render(self): #Attribute interpolator + rasterizer
         for i in range(0,len(self.vx1)):
 
             #Get primitives
 
-            vertex1 = Vertex(self.vx1[i], self.vy1[i], self.vz1[i], self.col1[i])
-            vertex2 = Vertex(self.vx2[i], self.vy2[i], self.vz2[i], self.col2[i])
-            vertex3 = Vertex(self.vx3[i], self.vy3[i], self.vz3[i], self.col3[i])
+            vertex1 = Vertex(self.vx1[i], self.vy1[i], self.vz1[i], self.col1[i], self.u[i][0], self.v[i][0])
+            vertex2 = Vertex(self.vx2[i], self.vy2[i], self.vz2[i], self.col2[i], self.u[i][1], self.v[i][1])
+            vertex3 = Vertex(self.vx3[i], self.vy3[i], self.vz3[i], self.col3[i], self.u[i][2], self.v[i][2])
 
             triangle = Triangle(vertex1, vertex2, vertex3)
 
@@ -200,6 +225,7 @@ class Rasterizer():
                             accum1 = ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3
                             accum2 = ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3
                             accum3 = ss_tri.A.B * edge1 + ss_tri.B.B * edge2 + ss_tri.C.B * edge3
+                            
                             accumu = ss_tri.A.u * edge1 + ss_tri.B.u * edge2 + ss_tri.C.u * edge3
                             accumv = ss_tri.A.v * edge1 + ss_tri.B.v * edge2 + ss_tri.C.v * edge3
 
