@@ -75,6 +75,7 @@ class Rasterizer():
         return self.sampleId_buffer
 
     def applyTextures(self, newRGB : np.array):
+        #Modulate math, just uses original interpolated color as albedo to apply to texture. 
         for h, datH in enumerate(newRGB):
             for w, datW in enumerate(datH):
 
