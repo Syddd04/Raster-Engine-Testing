@@ -36,6 +36,7 @@ class Vertex(Vec3):
         self.B = color[2]
         self.u = u
         self.v = v
+        self.w = 1/-z
         self.color = color
 
 class Triangle:
@@ -64,9 +65,9 @@ class Projector:
         self.aspect = width / height
     
     def toNearPlane(self, point : Vertex):
-        return Vertex((point.x * self.near) / (-point.z), (point.y * self.near) / (-point.z), point.z, point.color)
+        return Vertex((point.x * self.near) / (-point.z), (point.y * self.near) / (-point.z), point.z, point.color, point.u / -point.z, point.v / -point.z)
     def toNDC(self, point : Vertex):
-        return Vertex(point.x / (self.near * self.aspect), point.y / self.near, point.z, point.color)
+        return Vertex(point.x / (self.near * self.aspect), point.y / self.near, point.z, point.color, point.u, point.v)
     def depth(self, point : Vertex):
         z = point.z
         point.z = (-(self.far + self.near) / (self.far - self.near)*z) - (2*self.far*self.near / (self.near - self.far))
@@ -79,4 +80,4 @@ class Projector:
         x_pixel = (x_ndc + 1) * 0.5 * self.width
         y_pixel = (1 - y_ndc) * 0.5 * self.height
 
-        return Vertex(x_pixel, y_pixel, ndc.z, ndc.color)
+        return Vertex(x_pixel, y_pixel, ndc.z, ndc.color, ndc.u, ndc.v)
