@@ -60,6 +60,29 @@ class Rasterizer():
         self.uv_buffer = np.full((h,w,2),np.nan) #if there is a valid uv to be applied for a pixel then np.isfinite(u) and np.isfinite(v)
         self.sampleId_buffer = np.ones((h,w)) * -1 #The sample you should be pulling from for each pixel. 
 
+    def printBB(self):
+        for i in range(0,len(self.vs)):
+            #Get primitives
+
+            vertex1 = Vertex(self.vs[i][0][0], self.vs[i][0][1], self.vs[i][0][2], self.col1[i], self.u[i][0], self.v[i][0])
+            vertex2 = Vertex(self.vs[i][1][0], self.vs[i][1][1], self.vs[i][1][2], self.col2[i], self.u[i][1], self.v[i][1])
+            vertex3 = Vertex(self.vs[i][2][0], self.vs[i][2][1], self.vs[i][2][2], self.col3[i], self.u[i][2], self.v[i][2])
+
+            triangle = Triangle(vertex1, vertex2, vertex3)
+
+            #Convert to screen space
+
+            ss_v1 = self.project(triangle.A)
+            ss_v2 = self.project(triangle.B)
+            ss_v3 = self.project(triangle.C) 
+
+            ss_tri = Triangle(ss_v1, ss_v2, ss_v3)
+
+            ss_min = ss_tri.min().floor()
+            ss_max = ss_tri.max().ceil()
+
+            print(ss_min, ss_max)
+
     def getUV(self):
         return self.uv_buffer
     def getSamples(self):

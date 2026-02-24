@@ -34,13 +34,14 @@ col3 = [c3, c2]
 #I recommend sticking to this test case. It's relatively simple while also testing z and top left rule well enough.
 #The test above is extremely strict for msaa, even hardware is expected to fail it at lower resolutions with msaa. Use at your own discretion.
 
-vs = [[[-0.8, -0.6, -2], [0.8, -0.6, -2], [0.0, 0.6, -2]], #triangle 1
-      [[-1.4, -0.4, -2], [-0.8, -0.6, -2], [0.0, 0.6, -2]], #triangle 2
-      [[0.8, -0.6, -2], [1.4, 0.4, -2], [-0.4, 1, -3]]] #triangle 3
+vs = [[[-0.8, 0.6, -2.0], [0.8, 0.6, -2], [0.0, -0.6, -5]], #triangle 1
+      [[-1.0, 0.4, -3.0], [0.8, 0.6, -2.0], [0.0, -0.6, -5]], #triangle 2
+      [[1.0, -0.6, -5.0], [-0.8, 0.6, -2.0], [-0.1, 0.5, -2.0]], #triangle 3
+      [[-0.8, 0.6, -2.0], [0.0, -0.6, -5.0], [0.8, 0.6, -2.0]]] #triangle 4
 
-col1 = [[1,0,0], [0,0,1], [1,1,1]]
-col2 = [[0,1,0], [0,1,0], [1,1,1]]
-col3 = [[0,0,1], [1,0,0], [1,1,1]]
+col1 = [[1,0,0], [0,0,1], [1,1,1], [1,1,1]]
+col2 = [[0,1,0], [0,1,0], [1,1,1], [1,1,1]]
+col3 = [[0,0,1], [1,0,0], [1,1,1], [1,1,1]]
 
 
 '''
@@ -111,7 +112,8 @@ rasterEngine = Rasterizer(
 ) #defaults to 720p, msaa = 0, near = 1, far = 10
 
 start = perf_counter()
-rasterEngine.render()
+rasterEngine.printBB()
+#rasterEngine.render()
 end = perf_counter()
 
 print("Time to render:", end - start)
