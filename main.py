@@ -1,47 +1,129 @@
 from rasterizer import Rasterizer
 from time import perf_counter
 import numpy as np
+from PIL import Image
+from texture_unit import  texture_unit
+from calculate_gradients import process_tmu_quads
+import matplotlib.pyplot as plt
+import keyboard
 
-'''
-v0 = (-0.8, -0.8, -2)  # bottom left
-v1 = ( 0.8, -0.8, -2)  # bottom right
-v2 = ( 0.8,  0.8, -2)  # top right
-v3 = (-0.8,  0.8, -2)  # top left
+def obj_to_soa_rasterizer(file_path):
+    vertices = []
+    triangles_vs = []
+    face_lines = []
+    
+    # PASS 1: Accumulate all physical 3D vertices
+    with open(file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+                
+            parts = line.split()
+            if not parts:
+                continue
+                
+            if parts[0] == 'v':
+                vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            elif parts[0] == 'f':
+                face_lines.append(parts[1:])
 
-# Colors per corner
-c0 = [1,0,0]  # red
-c1 = [0,1,0]  # green
-c2 = [0,0,1]  # blue
-c3 = [1,1,1]  # white
+    # PASS 2: Reconstruct triangles 
+    for face_data in face_lines:
+        face_indices = []
+        for p in face_data:
+            idx = int(p.split('/')[0])
+            if idx > 0:
+                face_indices.append(idx - 1)
+            else:
+                face_indices.append(len(vertices) + idx)
+        
+        # Split any quads/polygons into triangles
+        for i in range(1, len(face_indices) - 1):
+            v0 = vertices[face_indices[0]]
+            v1 = vertices[face_indices[i]]
+            v2 = vertices[face_indices[i + 1]]
+            triangles_vs.append([v0, v1, v2])
 
-vx1 = [v0[0], v1[0]]
-vy1 = [v0[1], v1[1]]
-vz1 = [v0[2], v1[2]]
+    # --- Generate the Structure of Arrays (SoA) Colors ---
+    col1 = []  # Colors for the 1st vertex of every triangle
+    col2 = []  # Colors for the 2nd vertex of every triangle
+    col3 = []  # Colors for the 3rd vertex of every triangle
+    
+    palette = [
+        [[1,0,0], [0,0,1], [1,1,1]], 
+        [[0,1,0], [0,1,0], [1,1,1]], 
+        [[0,0,1], [1,0,0], [1,1,1]]  
+    ]
+    
+    for i in range(len(triangles_vs)):
+        current_tri_colors = palette[i % len(palette)]
+        
+        col1.append(current_tri_colors[0])
+        col2.append(current_tri_colors[1])
+        col3.append(current_tri_colors[2])
 
-vx2 = [v1[0], v3[0]]
-vy2 = [v1[1], v3[1]]
-vz2 = [v1[2], v3[2]]
+    # Return everything cleanly as a tuple
+    return triangles_vs, col1, col2, col3
 
-vx3 = [v3[0], v2[0]]
-vy3 = [v3[1], v2[1]]
-vz3 = [v3[2], v2[2]]
+# v0 = (-0.8, -0.8, -2)  # bottom left
+# v1 = ( 0.8, -0.8, -2)  # bottom right
+# v2 = ( 0.8,  0.8, -2)  # top right
+# v3 = (-0.8,  0.8, -2)  # top left
 
-col1 = [c0, c1]
-col2 = [c1, c3]
-col3 = [c3, c2]
-'''
+# # Colors per corner
+# c0 = [1,0,0]  # red
+# c1 = [0,1,0]  # green
+# c2 = [0,0,1]  # blue
+# c3 = [1,1,1]  # white
+
+# vx1 = [v0[0], v1[0]]
+# vy1 = [v0[1], v1[1]]
+# vz1 = [v0[2], v1[2]]
+
+# vx2 = [v1[0], v3[0]]
+# vy2 = [v1[1], v3[1]]
+# vz2 = [v1[2], v3[2]]
+
+# vx3 = [v3[0], v2[0]]
+# vy3 = [v3[1], v2[1]]
+# vz3 = [v3[2], v2[2]]
+
+# col1 = [c0, c1]
+# col2 = [c1, c3]
+# col3 = [c3, c2]
+
 
 #I recommend sticking to this test case. It's relatively simple while also testing z and top left rule well enough.
 #The test above is extremely strict for msaa, even hardware is expected to fail it at lower resolutions with msaa. Use at your own discretion.
 
-vs = [[[-0.8, 0.6, -2.0], [0.8, 0.6, -2], [0.0, -0.6, -5]], #triangle 1
-      [[-1.0, 0.4, -3.0], [0.8, 0.6, -2.0], [0.0, -0.6, -5]], #triangle 2
-      [[1.0, -0.6, -5.0], [-0.8, 0.6, -2.0], [-0.1, 0.5, -2.0]], #triangle 3
-      [[-0.8, 0.6, -2.0], [0.0, -0.6, -5.0], [0.8, 0.6, -2.0]]] #triangle 4
+# vs = [[[-0.8, -0.6, -2], [0.8, -0.6, -2], [0.0, 0.6, -2]], #triangle 1
+#       [[-1.4, -0.4, -2], [-0.8, -0.6, -2], [0.0, 0.6, -2]], #triangle 2
+#       [[0.8, -0.6, -2], [1.4, 0.4, -2], [-0.4, 1, -3]]] #triangle 3
 
-col1 = [[1,0,0], [0,0,1], [1,1,1], [1,1,1]]
-col2 = [[0,1,0], [0,1,0], [1,1,1], [1,1,1]]
-col3 = [[0,0,1], [1,0,0], [1,1,1], [1,1,1]]
+# col1 = [[1,0,0], [0,0,1], [1,1,1]]
+# col2 = [[0,1,0], [0,1,0], [1,1,1]]
+# col3 = [[0,0,1], [1,0,0], [1,1,1]]
+
+# u = [[0,0,1],[0,1,0],[1,0,0]]
+# v = [[0,1,1],[1,1,0],[1,0,1]]
+# tex_id = [1,1,1]
+
+
+
+#Test case for texture mapping
+
+# vs = [[[-8.5, 1, -20], [-8.5, -1, -1], [8.5, -1, -1]], #triangle 1
+#         [[-8.5, 1, -20], [8.5, 1, -20], [8.5, -1, -1]]] #triangle 2
+
+# tex_id = [0,0,0]
+
+# u = [[0,0,1], [0,1,1]]
+# v = [[0,1,1],[0,0,1]]
+
+# col1 = [[1,1,1], [1,1,1]]
+# col2 = [[1,1,1], [1,1,1]]
+# col3 = [[1,1,1], [1,1,1]]
 
 
 '''
@@ -107,15 +189,76 @@ invalid state : NA
 After running above you can run rasterEngine.showScreen() and it will show you your image with the texture map applied. 
 '''
 
+vs, col1, col2, col3 = obj_to_soa_rasterizer("torus.obj")
+
 rasterEngine = Rasterizer(
-    vs, col1, col2, col3, msaa = 2
+    vs, col1, col2, col3, msaa = 0, zoffset = 0, bcull = 1, rotate = 1, radius = 3, angle = 0, w=300, h=300
 ) #defaults to 720p, msaa = 0, near = 1, far = 10
 
-start = perf_counter()
-rasterEngine.printBB()
-#rasterEngine.render()
-end = perf_counter()
+# rasterEngine = Rasterizer(
+#     vs, col1, col2, col3,
+#     u = u, v = v, tex_id = tex_id, msaa=0
+# )
+ #defaults to 720p, msaa = 0, near = 1, far = 10
 
-print("Time to render:", end - start)
 
-rasterEngine.showScreen()
+
+# image = Image.open('missing.png')
+# image_array = np.array(image)[:, :, :3]
+# image_array = image_array/255.0
+
+#must be saved as PNGs
+#tex_names = ["debug_colors"]
+
+
+#tex_unit = texture_unit(tex_names)
+
+
+
+# start = perf_counter()
+# rasterEngine.render()
+# end = perf_counter()
+
+while True:
+    start = perf_counter()
+    rasterEngine.clearScreen()
+
+    if (keyboard.is_pressed('d')):
+        rasterEngine.changeAngle(5)
+    elif (keyboard.is_pressed('a')):
+        rasterEngine.changeAngle(-5)
+    elif (keyboard.is_pressed('q')):
+        break
+
+    rasterEngine.render()
+    rasterEngine.updateScreen()
+    end = perf_counter()
+    print("Time to render:", end - start)
+
+
+#partials = process_tmu_quads(rasterEngine.getSamples(),rasterEngine.getUV())
+
+
+
+#out = tex_unit.tex_map(rasterEngine.getUV(),rasterEngine.getSamples(), partials, filtering = 2, mipmap=True)
+
+
+# # code for rendering teapot, comment out raster engine calls to use this
+# # teapot_uv = np.load("teapot.npy")
+# # condition = np.any(teapot_uv != 0, axis=-1)
+# # mask_array = np.where(condition, 1, -1)
+# #
+# # out = tex_unit.tex_map(teapot_uv, mask_array, mode = 0)
+# #
+# # plt.imshow(out)
+# # plt.axis("off")
+# # plt.show()
+#
+#
+#rasterEngine.applyTextures(out)
+#
+#
+#
+# print("Time to render:", end - start)
+#
+# rasterEngine.showScreen()

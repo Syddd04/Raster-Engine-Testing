@@ -2,30 +2,38 @@ import numpy as np
 from graphics_lib import Triangle, Projector, Vertex
 import matplotlib.pyplot as plt
 from PIL import Image
+import math
 
 #Set up machines
 class Rasterizer():
 
+    def changeAngle(self, angle):
+        self.angle += angle
+
     def getNDC(self, vertex : Vertex):
         near_point = self.projector.toNearPlane(vertex)
         ndc : Vertex = self.projector.toNDC(near_point)
-        ndc.z = self.projector.depth(ndc)
         return ndc
 
-    def project(self, vert):
+    def project(self, vert : Vertex):
+
+        ogvert = vert
+
         #Convert to NDC
         ndc = self.getNDC(vert)
+        out = self.projector.toScreenSpace(ndc)
+        out.z = self.projector.depth(ogvert)
 
         #Convert to screen space
-        return self.projector.toScreenSpace(ndc)
+        return out
 
     def edge(self, a, b, x, y):
         return (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x)
 
     def validEdge (self, v0, v1):
-        edge_vec = [v1.x - v0.x, v1.y - v0.y]
-        top = edge_vec[1] == 0 and edge_vec[0] < 0  
-        left = edge_vec[1] < 0                      
+        edge_vec = [v1.x - v0.x, v1.y - v0.y] #1 cycle
+        top = edge_vec[1] == 0 and edge_vec[0] < 0   #2 cycle
+        left = edge_vec[1] < 0 #2 cycle
         return top or left
     
     def de_dx(self, a, b):
@@ -33,7 +41,7 @@ class Rasterizer():
     def de_dy(self, a, b):
         return b.x - a.x
 
-    def __init__(self, vs = [[[]]], col1 = [[]], col2 = [[]], col3 = [[]], u = [[-1, -1, -1]], v = [[-1, -1, -1]], msaa = 0, w=1280, h=720, near = 1, far = 10, tex_id = [-1]):
+    def __init__(self, vs = [[[]]], col1 = [[]], col2 = [[]], col3 = [[]], u = [[-1, -1, -1]], v = [[-1, -1, -1]], msaa = 0, w=1280, h=720, near = 1, far = 10, tex_id = [-1], zoffset = 0, bcull = 0, rotate = 0, radius = 0, angle = 0):
         msaa = 2 if (msaa > 2) else msaa
         
         #numpy arrays, all of them. Cols will be nx3x3 array
@@ -49,44 +57,36 @@ class Rasterizer():
         self.msaa = msaa
         self.w = w
         self.h = h
+        self.bcull = bcull
+        self.rot = rotate
+        self.radius = radius
+        self.angle = angle
+        self.near = near
+        self.far = far
+
+        self.zoffset = zoffset
 
         self.tex_ids = tex_id * len(vs) if tex_id[0] == -1 else tex_id #The sample name or number whatever you want for each triangle. len = no. triangles
 
         self.projector = Projector(self.w, self.h, near, far) #width, height, near plane, far plane
         self.screen = np.zeros((h,w,3))
         self.z_buffer = np.full((h,w,msaa if msaa > 0 else 1),np.inf)
-        self.w_buffer = np.full((h,w,msaa if msaa > 0 else 1),np.inf)
         self.color_buffer = np.zeros((h,w,msaa if msaa > 0 else 1,3))
         self.uv_buffer = np.full((h,w,2),np.nan) #if there is a valid uv to be applied for a pixel then np.isfinite(u) and np.isfinite(v)
-        self.sampleId_buffer = np.ones((h,w)) * -1 #The sample you should be pulling from for each pixel. 
-
-    def printBB(self):
-        for i in range(0,len(self.vs)):
-            #Get primitives
-
-            vertex1 = Vertex(self.vs[i][0][0], self.vs[i][0][1], self.vs[i][0][2], self.col1[i], self.u[i][0], self.v[i][0])
-            vertex2 = Vertex(self.vs[i][1][0], self.vs[i][1][1], self.vs[i][1][2], self.col2[i], self.u[i][1], self.v[i][1])
-            vertex3 = Vertex(self.vs[i][2][0], self.vs[i][2][1], self.vs[i][2][2], self.col3[i], self.u[i][2], self.v[i][2])
-
-            triangle = Triangle(vertex1, vertex2, vertex3)
-
-            #Convert to screen space
-
-            ss_v1 = self.project(triangle.A)
-            ss_v2 = self.project(triangle.B)
-            ss_v3 = self.project(triangle.C) 
-
-            ss_tri = Triangle(ss_v1, ss_v2, ss_v3)
-
-            ss_min = ss_tri.min().floor()
-            ss_max = ss_tri.max().ceil()
-
-            print(ss_min, ss_max)
+        self.sampleId_buffer = (np.ones((h,w)) * -1).astype(int) #The sample you should be pulling from for each pixel.
 
     def getUV(self):
         return self.uv_buffer
     def getSamples(self):
         return self.sampleId_buffer
+
+    def clearScreen(self):
+        self.projector = Projector(self.w, self.h, self.near, self.far) #width, height, near plane, far plane
+        self.screen = np.zeros((self.h,self.w,3))
+        self.z_buffer = np.full((self.h,self.w,self.msaa if self.msaa > 0 else 1),np.inf)
+        self.color_buffer = np.zeros((self.h,self.w,self.msaa if self.msaa > 0 else 1,3))
+        self.uv_buffer = np.full((self.h,self.w,2),np.nan) #if there is a valid uv to be applied for a pixel then np.isfinite(u) and np.isfinite(v)
+        self.sampleId_buffer = (np.ones((self.h,self.w)) * -1).astype(int) #The sample you should be pulling from for each pixel.
 
     def applyTextures(self, newRGB : np.array):
         #Modulate math, just uses original interpolated color as albedo to apply to texture. 
@@ -117,13 +117,36 @@ class Rasterizer():
         self.render_2msaa() if self.msaa == 2 else self.render_0msaa()
 
     def render_2msaa(self): #Attribute interpolator + rasterizer
+
+        angle = math.radians(self.angle)
+
         for i in range(0,len(self.vs)):
+
+            x1, y1, z1 = self.vs[i][0]
+            x2, y2, z2 = self.vs[i][1]
+            x3, y3, z3 = self.vs[i][2]
+
+            if (self.rot != 0):
+                # Rotate on the X-Axis (Pitch tumble)
+                y1_temp = y1 * math.cos(-angle) - z1 * math.sin(-angle)
+                z1 = y1 * math.sin(-angle) + z1 * math.cos(-angle) - self.radius
+                y1 = y1_temp
+
+                y2_temp = y2 * math.cos(-angle) - z2 * math.sin(-angle)
+                z2 = y2 * math.sin(-angle) + z2 * math.cos(-angle) - self.radius
+                y2 = y2_temp
+
+                y3_temp = y3 * math.cos(-angle) - z3 * math.sin(-angle)
+                z3 = y3 * math.sin(-angle) + z3 * math.cos(-angle) - self.radius
+                y3 = y3_temp
+
+
 
             #Get primitives
 
-            vertex1 = Vertex(self.vs[i][0][0], self.vs[i][0][1], self.vs[i][0][2], self.col1[i], self.u[i][0], self.v[i][0])
-            vertex2 = Vertex(self.vs[i][1][0], self.vs[i][1][1], self.vs[i][1][2], self.col2[i], self.u[i][1], self.v[i][1])
-            vertex3 = Vertex(self.vs[i][2][0], self.vs[i][2][1], self.vs[i][2][2], self.col3[i], self.u[i][2], self.v[i][2])
+            vertex1 = Vertex(x1, y1, z1 + self.zoffset, self.col1[i], self.u[i][0], self.v[i][0])
+            vertex2 = Vertex(x2, y2, z2 + self.zoffset, self.col2[i], self.u[i][1], self.v[i][1])
+            vertex3 = Vertex(x3, y3, z3 + self.zoffset, self.col3[i], self.u[i][2], self.v[i][2])
 
             triangle = Triangle(vertex1, vertex2, vertex3)
 
@@ -137,12 +160,21 @@ class Rasterizer():
 
             ss_min = ss_tri.min().floor()
             ss_max = ss_tri.max().ceil()
+            ss_min.x = max(0, min(self.w - 1, int(ss_min.x)))
+            ss_max.x = max(0, min(self.w - 1, int(ss_max.x)))
+            ss_min.y = max(0, min(self.h - 1, int(ss_min.y)))
+            ss_max.y = max(0, min(self.h - 1, int(ss_max.y)))
 
             #Check winding.
-            area = self.edge(ss_tri.A, ss_tri.B, ss_tri.C.x, ss_tri.C.y) / 2 #Edge equation is cross product, so divide by 2 to get area of triangle instead of parallelogram.
-            if area < 0:
+            area = self.edge(ss_tri.A, ss_tri.B, ss_tri.C.x, ss_tri.C.y) / 2 #Edge equation is cross product, so divide by 2 to get area of triangle instead of parallelogram
+
+            if (area > 0 and self.bcull == 0):
                 ss_tri.B, ss_tri.C = ss_tri.C, ss_tri.B
                 area = -area
+
+            if area > 0 and self.bcull != 0:
+                continue
+
             norm_factor = 1 / (2 * area)
 
             
@@ -241,9 +273,10 @@ class Rasterizer():
                         accum1 = ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3
                         accum2 = ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3
                         accum3 = ss_tri.A.B * edge1 + ss_tri.B.B * edge2 + ss_tri.C.B * edge3
+                        
                         accumu = ss_tri.A.u * edge1 + ss_tri.B.u * edge2 + ss_tri.C.u * edge3
                         accumv = ss_tri.A.v * edge1 + ss_tri.B.v * edge2 + ss_tri.C.v * edge3
-                        accumw = ss_tri.A.w * edge1 + ss_tri.B.w * edge2 + ss_tri.C.w * edge3
+                        w = ss_tri.A.w * edge1 + ss_tri.B.w * edge2 + ss_tri.C.w * edge3
 
                         if (pass0 and not pass1):
                             accum1 = ss_tri.A.R * e0_1 + ss_tri.B.R * e0_2 + ss_tri.C.R * e0_3
@@ -251,17 +284,17 @@ class Rasterizer():
                             accum3 = ss_tri.A.B * e0_1 + ss_tri.B.B * e0_2 + ss_tri.C.B * e0_3
                             accumu = ss_tri.A.u * e0_1 + ss_tri.B.u * e0_2 + ss_tri.C.u * e0_3
                             accumv = ss_tri.A.v * e0_1 + ss_tri.B.v * e0_2 + ss_tri.C.v * e0_3
-                            accumw = ss_tri.A.w * e0_1 + ss_tri.B.w * e0_2 + ss_tri.C.w * e0_3
+                            w = ss_tri.A.w * e0_1 + ss_tri.B.w * e0_2 + ss_tri.C.w * e0_3
                         elif (not pass0 and pass1):
                             accum1 = ss_tri.A.R * e1_1 + ss_tri.B.R * e1_2 + ss_tri.C.R * e1_3
                             accum2 = ss_tri.A.G * e1_1 + ss_tri.B.G * e1_2 + ss_tri.C.G * e1_3
                             accum3 = ss_tri.A.B * e1_1 + ss_tri.B.B * e1_2 + ss_tri.C.B * e1_3
                             accumu = ss_tri.A.u * e1_1 + ss_tri.B.u * e1_2 + ss_tri.C.u * e1_3
                             accumv = ss_tri.A.v * e1_1 + ss_tri.B.v * e1_2 + ss_tri.C.v * e1_3
-                            accumw = ss_tri.A.w * e1_1 + ss_tri.B.w * e1_2 + ss_tri.C.w * e1_3
+                            w = ss_tri.A.w * e1_1 + ss_tri.B.w * e1_2 + ss_tri.C.w * e1_3
 
-                        self.uv_buffer[y][j][0] = accumu / accumw
-                        self.uv_buffer[y][j][1] = accumv / accumw
+                        self.uv_buffer[y][j][0] = accumu / w
+                        self.uv_buffer[y][j][1] = accumv / w
 
                         if (pass0):
                             self.z_buffer[y][j][0] = z0
@@ -311,14 +344,36 @@ class Rasterizer():
                 e_ini2 += de_dy2
                 e_ini3 += de_dy3
                     
-    def render_0msaa(self): #Attribute interpolator + rasterizer. MSAA off is perspective correct for uv values
+    def render_0msaa(self): #Attribute interpolator + rasterizer
+
+        angle = math.radians(self.angle)
+
         for i in range(0,len(self.vs)):
+            x1, y1, z1 = self.vs[i][0]
+            x2, y2, z2 = self.vs[i][1]
+            x3, y3, z3 = self.vs[i][2]
+
+            if (self.rot != 0):
+                # Rotate on the X-Axis (Pitch tumble)
+                y1_temp = y1 * math.cos(-angle) - z1 * math.sin(-angle)
+                z1 = y1 * math.sin(-angle) + z1 * math.cos(-angle) - self.radius
+                y1 = y1_temp
+
+                y2_temp = y2 * math.cos(-angle) - z2 * math.sin(-angle)
+                z2 = y2 * math.sin(-angle) + z2 * math.cos(-angle) - self.radius
+                y2 = y2_temp
+
+                y3_temp = y3 * math.cos(-angle) - z3 * math.sin(-angle)
+                z3 = y3 * math.sin(-angle) + z3 * math.cos(-angle) - self.radius
+                y3 = y3_temp
+
+
 
             #Get primitives
 
-            vertex1 = Vertex(self.vs[i][0][0], self.vs[i][0][1], self.vs[i][0][2], self.col1[i], self.u[i][0], self.v[i][0])
-            vertex2 = Vertex(self.vs[i][1][0], self.vs[i][1][1], self.vs[i][1][2], self.col2[i], self.u[i][1], self.v[i][1])
-            vertex3 = Vertex(self.vs[i][2][0], self.vs[i][2][1], self.vs[i][2][2], self.col3[i], self.u[i][2], self.v[i][2])
+            vertex1 = Vertex(x1, y1, z1 + self.zoffset, self.col1[i], self.u[i][0], self.v[i][0])
+            vertex2 = Vertex(x2, y2, z2 + self.zoffset, self.col2[i], self.u[i][1], self.v[i][1])
+            vertex3 = Vertex(x3, y3, z3 + self.zoffset, self.col3[i], self.u[i][2], self.v[i][2])
 
             triangle = Triangle(vertex1, vertex2, vertex3)
 
@@ -332,12 +387,21 @@ class Rasterizer():
 
             ss_min = ss_tri.min().floor()
             ss_max = ss_tri.max().ceil()
+            ss_min.x = max(0, min(self.w - 1, int(ss_min.x)))
+            ss_max.x = max(0, min(self.w - 1, int(ss_max.x)))
+            ss_min.y = max(0, min(self.h - 1, int(ss_min.y)))
+            ss_max.y = max(0, min(self.h - 1, int(ss_max.y)))
 
             #Check winding.
             area = self.edge(ss_tri.A, ss_tri.B, ss_tri.C.x, ss_tri.C.y) / 2 #Edge equation is cross product, so divide by 2 to get area of triangle instead of parallelogram.
-            if area < 0:
+
+            if area > 0 and self.bcull == 0:
                 ss_tri.B, ss_tri.C = ss_tri.C, ss_tri.B
                 area = -area
+
+            if (area > 0 and self.bcull != 0):
+                continue
+            
             norm_factor = 1 / (2 * area)
                 
             bx = ss_min.x + 0.5
@@ -365,6 +429,8 @@ class Rasterizer():
                 edge1 = e_ini1
                 edge2 = e_ini2
                 edge3 = e_ini3
+
+                flag = 0
                     
                 for j in range(ss_min.x, ss_max.x):
                     if area == 0:
@@ -374,6 +440,7 @@ class Rasterizer():
                     w = ss_tri.A.w * edge1 + ss_tri.B.w * edge2 + ss_tri.C.w * edge3
 
                     if ((edge1 + check1 >= 0) and (edge2 + check2 >= 0) and (edge3 + check3 >= 0) and z <= self.z_buffer[y][j][0]):
+                        flag = 1
                         self.screen[y][j][0] = ss_tri.A.R * edge1 + ss_tri.B.R * edge2 + ss_tri.C.R * edge3
                         self.screen[y][j][1] = ss_tri.A.G * edge1 + ss_tri.B.G * edge2 + ss_tri.C.G * edge3
                         self.screen[y][j][2] = ss_tri.A.B * edge1 + ss_tri.B.B * edge2 + ss_tri.C.B * edge3
@@ -387,6 +454,9 @@ class Rasterizer():
                     edge2 += de_dx2
                     edge3 += de_dx3
 
+                    if (flag == 1 and ((edge1 + check1 < 0) or (edge2 + check2 < 0) or (edge3 + check3 < 0))):
+                        break
+
                 e_ini1 += de_dy1
                 e_ini2 += de_dy2
                 e_ini3 += de_dy3    
@@ -395,6 +465,23 @@ class Rasterizer():
         plt.imshow(np.clip(self.screen, 0.0, 1.0))
         plt.axis('off')
         plt.show()
+
+    def updateScreen(self):
+        plt.ion()
+        
+        # 1. Update or create the image element
+        if plt.gca().images:
+            plt.gca().images[0].set_data(np.clip(self.screen, 0.0, 1.0))
+        else:
+            plt.imshow(np.clip(self.screen, 0.0, 1.0))
+            plt.axis('off')
+        
+        # 2. Force an IMMEDIATE visual update to the canvas data
+        plt.gcf().canvas.draw()
+        
+        # 3. Process events and briefly pause to allow the GUI to repaint
+        plt.gcf().canvas.flush_events()
+        plt.pause(0.001)  # Critical for frame pacing
 
     def saveScreen(self, filename = 'lossless.png'):
         #Save image
